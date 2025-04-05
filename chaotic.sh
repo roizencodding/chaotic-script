@@ -1,67 +1,70 @@
 #!/bin/bash
 
-VERSION="v1.1"
+LANG="en"
 LOG_FILE="/tmp/chaotic_install.log"
-LANGUAGE="en"
+VERSION="1.2"
 
-# Проверка флага -ru для выбора русского языка
-if [[ "$1" == "-ru" ]]; then
-    LANGUAGE="ru"
-fi
+while getopts "ru" opt; do
+  case $opt in
+    ru) LANG="ru" ;;
+  esac
+done
 
-# Функция для вывода сообщений на основе языка
-function print_message {
-    if [[ "$LANGUAGE" == "ru" ]]; then
-        case $1 in
-            "not_root") echo "[+] Переход на привилегии root..." ;;
-            "adding_repo") echo "[+] Добавление репозитория Chaotic-AUR..." ;;
-            "installing_yay") echo "[+] Установка yay..." ;;
-            "complete") echo "[+] Установка завершена!" ;;
-            "duplicate_entry") echo "[+] Запись уже существует в pacman.conf, пропуск..." ;;
-        esac
-    else
-        case $1 in
-            "not_root") echo "[+] Elevating to root privileges..." ;;
-            "adding_repo") echo "[+] Adding Chaotic-AUR repository..." ;;
-            "installing_yay") echo "[+] Installing yay..." ;;
-            "complete") echo "[+] Installation complete!" ;;
-            "duplicate_entry") echo "[+] Entry already exists in pacman.conf, skipping..." ;;
-        esac
-    fi
+print_en() {
+    echo "[+] Chaotic-AUR Installer v${VERSION}"
+    echo "[+] Adding Chaotic-AUR repository..."
+    echo "[+] Installing yay..."
+    echo "[+] Installation completed successfully!"
+    echo "[+] Log saved to: ${LOG_FILE}"
 }
 
-# Логирование вывода
-exec > >(tee -a "$LOG_FILE") 2>&1
+print_ru() {
+    echo "[+] Установщик Chaotic-AUR v${VERSION}"
+    echo "[+] Добавление репозитория Chaotic-AUR..."
+    echo "[+] Установка yay..."
+    echo "[+] Установка успешно завершена!"
+    echo "[+] Лог сохранен в: ${LOG_FILE}"
+}
 
-# Автоматическое повышение привилегий
+exec_with_log() {
+    echo "$(date): Running: $1" >> $LOG_FILE
+    eval "$1" &>> $LOG_FILE
+    return $?
+}
+
 if [ "$EUID" -ne 0 ]; then
-    print_message "not_root"
     sudo "$0" "$@"
-    exit
+    exit $?
 fi
 
-# Добавление ключей и списка зеркал Chaotic-AUR
-print_message "adding_repo"
-pacman-key --recv-key 3056513887B78AEB --keyserver keyserver.ubuntu.com &>/dev/null
-pacman-key --lsign-key 3056513887B78AEB &>/dev/null
+echo "" > $LOG_FILE
 
-# Установка ключей и списка зеркал Chaotic-AUR
-pacman -U 'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-keyring.pkg.tar.zst' --noconfirm &>/dev/null
-pacman -U 'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-mirrorlist.pkg.tar.zst' --noconfirm &>/dev/null
+if [ "$LANG" = "ru" ]; then
+    print_ru
+else
+    print_en
+fi
 
-# Проверка на дублирование записей в pacman.conf
-if ! grep -q '\[chaotic-aur\]' /etc/pacman.conf; then
+exec_with_log "pacman-key --recv-key 3056513887B78AEB --keyserver keyserver.ubuntu.com"
+exec_with_log "pacman-key --lsign-key 3056513887B78AEB"
+
+exec_with_log "pacman -U 'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-keyring.pkg.tar.zst' --noconfirm"
+exec_with_log "pacman -U 'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-mirrorlist.pkg.tar.zst' --noconfirm"
+
+if ! grep -q "\[chaotic-aur\]" /etc/pacman.conf; then
     echo '[chaotic-aur]
 Include = /etc/pacman.d/chaotic-mirrorlist' >> /etc/pacman.conf
-else
-    print_message "duplicate_entry"
 fi
 
-# Установка yay из Chaotic-AUR
-print_message "installing_yay"
-pacman -Sy --noconfirm yay &>/dev/null
+exec_with_log "pacman -Sy"
+exec_with_log "pacman -S --noconfirm yay"
 
-# Синхронизация базы данных пакетов
-yay -Syu --noconfirm &>/dev/null
-
-print_message "complete"
+if [ "$LANG" = "ru" ]; then
+    echo "[+] Синхронизация базы данных пакетов..."
+    exec_with_log "yay -Syu"
+    echo "[+] Готово! Теперь вы можете использовать yay для установки пакетов из AUR и Chaotic-AUR."
+else
+    echo "[+] Syncing package database..."
+    exec_with_log "yay -Syu"
+    echo "[+] Done! You can now use yay to install packages from AUR and Chaotic-AUR."
+fi
