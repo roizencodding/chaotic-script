@@ -8,7 +8,7 @@ Simple script for installing Chaotic-AUR (and yay)
 - Paste (`Ctrl`+`Shift`+`V`)
 
 ```bash
-curl -sL "https://github.com/roizencodding/chaotic-script/raw/refs/heads/main/chaotic.sh" | sudo bash
+curl -sL "https://github.com/roizencodding/chaotic-script/raw/refs/heads/main/chaotic.sh" | bash
 ```
 
 - Press Enter
