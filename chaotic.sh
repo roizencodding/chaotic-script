@@ -1,26 +1,70 @@
 #!/bin/bash
 
-# Убедитесь, что скрипт запущен от имени root
+LANG="en"
+LOG_FILE="/tmp/chaotic_install.log"
+VERSION="1.2"
+
+while getopts "ru" opt; do
+  case $opt in
+    ru) LANG="ru" ;;
+  esac
+done
+
+print_en() {
+    echo "[+] Chaotic-AUR Installer v${VERSION}"
+    echo "[+] Adding Chaotic-AUR repository..."
+    echo "[+] Installing yay..."
+    echo "[+] Installation completed successfully!"
+    echo "[+] Log saved to: ${LOG_FILE}"
+}
+
+print_ru() {
+    echo "[+] Установщик Chaotic-AUR v${VERSION}"
+    echo "[+] Добавление репозитория Chaotic-AUR..."
+    echo "[+] Установка yay..."
+    echo "[+] Установка успешно завершена!"
+    echo "[+] Лог сохранен в: ${LOG_FILE}"
+}
+
+exec_with_log() {
+    echo "$(date): Running: $1" >> $LOG_FILE
+    eval "$1" &>> $LOG_FILE
+    return $?
+}
+
 if [ "$EUID" -ne 0 ]; then
-    echo "Пожалуйста, запустите от имени root"
-    exit
+    sudo "$0" "$@"
+    exit $?
 fi
 
-# Добавление ключей и списка зеркал Chaotic-AUR
-echo "Добавление репозитория Chaotic-AUR..."
-pacman-key --recv-key 3056513887B78AEB --keyserver keyserver.ubuntu.com &>/dev/null
-pacman-key --lsign-key 3056513887B78AEB &>/dev/null
+echo "" > $LOG_FILE
 
-# Установка ключей и списка зеркал Chaotic-AUR
-pacman -U 'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-keyring.pkg.tar.zst' --noconfirm &>/dev/null
-pacman -U 'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-mirrorlist.pkg.tar.zst' --noconfirm &>/dev/null
+if [ "$LANG" = "ru" ]; then
+    print_ru
+else
+    print_en
+fi
 
-# Добавление Chaotic-AUR в pacman.conf
-echo '[chaotic-aur]
+exec_with_log "pacman-key --recv-key 3056513887B78AEB --keyserver keyserver.ubuntu.com"
+exec_with_log "pacman-key --lsign-key 3056513887B78AEB"
+
+exec_with_log "pacman -U 'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-keyring.pkg.tar.zst' --noconfirm"
+exec_with_log "pacman -U 'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-mirrorlist.pkg.tar.zst' --noconfirm"
+
+if ! grep -q "\[chaotic-aur\]" /etc/pacman.conf; then
+    echo '[chaotic-aur]
 Include = /etc/pacman.d/chaotic-mirrorlist' >> /etc/pacman.conf
+fi
 
-# Установка yay из Chaotic-AUR
-echo "Установка yay..."
-pacman -Sy --noconfirm yay &>/dev/null
+exec_with_log "pacman -Sy"
+exec_with_log "pacman -S --noconfirm yay"
 
-echo "Установка Chaotic-AUR и yay завершена!"
+if [ "$LANG" = "ru" ]; then
+    echo "[+] Синхронизация базы данных пакетов..."
+    exec_with_log "yay -Syu"
+    echo "[+] Готово! Теперь вы можете использовать yay для установки пакетов из AUR и Chaotic-AUR."
+else
+    echo "[+] Syncing package database..."
+    exec_with_log "yay -Syu"
+    echo "[+] Done! You can now use yay to install packages from AUR and Chaotic-AUR."
+fi
